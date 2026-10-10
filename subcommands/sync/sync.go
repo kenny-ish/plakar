@@ -17,6 +17,7 @@
 package sync
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -301,6 +302,7 @@ func (cmd *Sync) Execute(ctx *appcontext.AppContext, repo *repository.Repository
 	}
 
 	srcSynced := 0
+	var syncErr error
 	for _, snapshotID := range srcSyncList {
 		if err := ctx.Err(); err != nil {
 			return 1, err
@@ -308,8 +310,8 @@ func (cmd *Sync) Execute(ctx *appcontext.AppContext, repo *repository.Repository
 
 		err := cmd.synchronize(ctx, peerCtx, srcRepository, dstRepository, srcStoreConfig, snapshotID)
 		if err != nil {
-			ctx.GetLogger().Error("failed to synchronize snapshot %x from store %s: %s",
-				snapshotID[:4], srcLocation, err)
+			syncErr = errors.Join(syncErr, fmt.Errorf("synchronize snapshot %x from store %s: %w",
+				snapshotID[:4], srcLocation, err))
 		} else {
 			srcSynced++
 		}
@@ -345,8 +347,8 @@ func (cmd *Sync) Execute(ctx *appcontext.AppContext, repo *repository.Repository
 
 			err := cmd.synchronize(ctx, peerCtx, srcRepository, dstRepository, srcStoreConfig, snapshotID)
 			if err != nil {
-				ctx.GetLogger().Error("failed to synchronize snapshot %x from peer store %s: %s",
-					snapshotID[:4], dstLocation, err)
+				syncErr = errors.Join(syncErr, fmt.Errorf("synchronize snapshot %x from peer store %s: %w",
+					snapshotID[:4], dstLocation, err))
 			} else {
 				dstSynced++
 			}
@@ -365,6 +367,10 @@ func (cmd *Sync) Execute(ctx *appcontext.AppContext, repo *repository.Repository
 			dstLocation,
 			srcLocation,
 			srcSynced)
+	}
+
+	if syncErr != nil {
+		return 1, syncErr
 	}
 
 	return 0, nil
